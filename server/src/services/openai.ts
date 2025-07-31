@@ -118,10 +118,12 @@ export class OpenAIService {
   static async analyzeMealImage(
     imageBase64: string,
     language: string = "english",
-    updateText?: string
+    updateText?: string,
+    editedIngredients?: any[]
   ): Promise<MealAnalysisResult> {
     try {
       console.log("🤖 Starting meal image analysis...");
+      console.log("🥗 Edited ingredients count:", editedIngredients?.length || 0);
 
       // Validate and clean the image data
       let cleanBase64: string;
@@ -130,7 +132,7 @@ export class OpenAIService {
       } catch (validationError: any) {
         console.log("⚠️ Image validation failed:", validationError.message);
         console.log("🔄 Using intelligent fallback analysis...");
-        return this.getIntelligentFallbackAnalysis(language, updateText);
+        return this.getIntelligentFallbackAnalysis(language, updateText, editedIngredients);
       }
 
       // Try OpenAI analysis if available
@@ -140,29 +142,39 @@ export class OpenAIService {
           return await this.callOpenAIForAnalysis(
             cleanBase64,
             language,
-            updateText
+            updateText,
+            editedIngredients
           );
         } catch (openaiError: any) {
           console.log("⚠️ OpenAI failed:", openaiError.message);
           // Always use fallback on OpenAI failure
-          return this.getIntelligentFallbackAnalysis(language, updateText);
+          return this.getIntelligentFallbackAnalysis(language, updateText, editedIngredients);
         }
       } else {
         console.log("⚠️ No OpenAI API key, using intelligent fallback");
-        return this.getIntelligentFallbackAnalysis(language, updateText);
+        return this.getIntelligentFallbackAnalysis(language, updateText, editedIngredients);
       }
     } catch (error: any) {
       console.log("💥 Main analysis failed:", error.message);
       // Always return fallback - NEVER throw error
-      return this.getIntelligentFallbackAnalysis(language, updateText);
+      return this.getIntelligentFallbackAnalysis(language, updateText, editedIngredients);
     }
   }
 
   private static async callOpenAIForAnalysis(
     cleanBase64: string,
     language: string,
-    updateText?: string
+    updateText?: string,
+    editedIngredients?: any[]
   ): Promise<MealAnalysisResult> {
+    // Build context from edited ingredients if provided
+    let ingredientsContext = "";
+    if (editedIngredients && editedIngredients.length > 0) {
+      ingredientsContext = `\n\nUSER PROVIDED INGREDIENTS: ${editedIngredients.map(ing => 
+        `${ing.name}: ${ing.calories}cal, ${ing.protein}g protein, ${ing.carbs}g carbs, ${ing.fat}g fat`
+      ).join("; ")}`;
+    }
+
     const systemPrompt = `You are a professional nutritionist. Analyze the food image and provide precise nutritional data.
 
 IMPORTANT: Respond in ${
@@ -251,9 +263,13 @@ Return JSON with ALL fields below (text fields in ${
 
 Language: ${language}`;
 
-    const userPrompt = updateText
-      ? `Please analyze this food image. Additional context: ${updateText}`
-      : "Please analyze this food image and provide detailed nutritional information.";
+    let userPrompt = "Please analyze this food image and provide detailed nutritional information.";
+    if (updateText) {
+      userPrompt += ` Additional context: ${updateText}`;
+    }
+    if (ingredientsContext) {
+      userPrompt += ingredientsContext;
+    }
 
     console.log("🚀 CALLING OPENAI API!");
 
@@ -295,6 +311,41 @@ Language: ${language}`;
     const cleanJSON = extractCleanJSON(content);
     const parsed = JSON.parse(cleanJSON);
 
+    // If edited ingredients were provided, merge them with AI analysis
+    let finalIngredients = parsed.ingredients || [];
+    if (editedIngredients && editedIngredients.length > 0) {
+      console.log("🔄 Merging edited ingredients with AI analysis");
+      finalIngredients = editedIngredients.map((editedIng: any) => ({
+        name: editedIng.name,
+        calories: editedIng.calories || 0,
+        protein_g: editedIng.protein || 0,
+        carbs_g: editedIng.carbs || 0,
+        fats_g: editedIng.fat || 0,
+        fiber_g: editedIng.fiber || 0,
+        sugar_g: editedIng.sugar || 0,
+        sodium_mg: editedIng.sodium_mg || 0,
+      }));
+      
+      // Recalculate totals based on edited ingredients
+      const totals = finalIngredients.reduce((acc: any, ing: any) => ({
+        calories: acc.calories + (ing.calories || 0),
+        protein: acc.protein + (ing.protein_g || 0),
+        carbs: acc.carbs + (ing.carbs_g || 0),
+        fat: acc.fat + (ing.fats_g || 0),
+        fiber: acc.fiber + (ing.fiber_g || 0),
+        sugar: acc.sugar + (ing.sugar_g || 0),
+        sodium: acc.sodium + (ing.sodium_mg || 0),
+      }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0 });
+      
+      // Update parsed values with recalculated totals
+      parsed.calories = totals.calories;
+      parsed.protein_g = totals.protein;
+      parsed.carbs_g = totals.carbs;
+      parsed.fats_g = totals.fat;
+      parsed.fiber_g = totals.fiber;
+      parsed.sugar_g = totals.sugar;
+      parsed.sodium_mg = totals.sodium;
+    }
     const analysisResult: MealAnalysisResult = {
       name: parsed.meal_name || "AI Analyzed Meal",
       description: parsed.description || "",
@@ -361,8 +412,8 @@ Language: ${language}`;
         100,
         Math.max(0, Number(parsed.confidence) * 100 || 85)
       ),
-      ingredients: Array.isArray(parsed.ingredients)
-        ? parsed.ingredients.map((ing: any) => {
+      ingredients: Array.isArray(finalIngredients)
+        ? finalIngredients.map((ing: any) => {
             if (typeof ing === "string") {
               return {
                 name: ing,
@@ -398,10 +449,10 @@ Language: ${language}`;
                 : undefined,
             };
           })
-        : typeof parsed.ingredients === "string"
+        : typeof finalIngredients === "string"
         ? [
             {
-              name: parsed.ingredients,
+              name: finalIngredients,
               calories: 0,
               protein_g: 0,
               carbs_g: 0,
@@ -420,13 +471,54 @@ Language: ${language}`;
 
   private static getIntelligentFallbackAnalysis(
     language: string = "english",
-    updateText?: string
+    updateText?: string,
+    editedIngredients?: any[]
   ): MealAnalysisResult {
     console.log("⚠️ Using fallback analysis - OpenAI not available or failed");
     console.log(
       "💡 To enable real AI analysis, ensure OPENAI_API_KEY is set in environment"
     );
 
+    // If edited ingredients are provided, use them for calculations
+    if (editedIngredients && editedIngredients.length > 0) {
+      console.log("🔄 Using edited ingredients for fallback analysis");
+      
+      const totals = editedIngredients.reduce((acc: any, ing: any) => ({
+        calories: acc.calories + (ing.calories || 0),
+        protein: acc.protein + (ing.protein || 0),
+        carbs: acc.carbs + (ing.carbs || 0),
+        fat: acc.fat + (ing.fat || 0),
+        fiber: acc.fiber + (ing.fiber || 0),
+        sugar: acc.sugar + (ing.sugar || 0),
+        sodium: acc.sodium + (ing.sodium_mg || 0),
+      }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0 });
+
+      return {
+        name: language === "hebrew" ? "ארוחה מותאמת" : "Custom Meal",
+        description: language === "hebrew" ? "ארוחה מבוססת רכיבים מותאמים" : "Meal based on custom ingredients",
+        calories: totals.calories,
+        protein: totals.protein,
+        carbs: totals.carbs,
+        fat: totals.fat,
+        fiber: totals.fiber,
+        sugar: totals.sugar,
+        sodium: totals.sodium,
+        confidence: 90, // High confidence for user-edited ingredients
+        ingredients: editedIngredients.map((ing: any) => ({
+          name: ing.name,
+          calories: ing.calories || 0,
+          protein_g: ing.protein || 0,
+          carbs_g: ing.carbs || 0,
+          fats_g: ing.fat || 0,
+          fiber_g: ing.fiber || 0,
+          sugar_g: ing.sugar || 0,
+          sodium_mg: ing.sodium_mg || 0,
+        })),
+        servingSize: "1 serving",
+        cookingMethod: "Custom",
+        healthNotes: language === "hebrew" ? "מבוסס על רכיבים מותאמים" : "Based on custom ingredients",
+      };
+    }
     const baseMeal = {
       name: language === "hebrew" ? "ארוחה מעורבת" : "Mixed Meal",
       description:

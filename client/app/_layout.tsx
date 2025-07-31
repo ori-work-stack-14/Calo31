@@ -10,6 +10,7 @@ import { Text, View, ActivityIndicator, StyleSheet } from "react-native";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useAppInitialization } from "@/hooks/useAppInitialization";
+import { ThemeProvider } from "@/src/contexts/ThemeContext";
 import { useSelector } from "react-redux";
 import { RootState } from "@/src/store";
 import { useRouter, useSegments } from "expo-router";
@@ -24,6 +25,7 @@ import { I18nextProvider } from "react-i18next";
 import i18n from "@/src/i18n";
 import { User } from "@/src/types";
 import LanguageToolbar from "@/components/LanguageToolbar";
+import { NotificationService } from "@/src/services/notifications";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -270,6 +272,8 @@ const AppContent = () => {
   useEffect(() => {
     if (loaded) {
       SplashScreen.hideAsync();
+      // Initialize notifications
+      NotificationService.requestPermissions();
     }
   }, [loaded]);
 
@@ -301,10 +305,12 @@ export default function RootLayout() {
           <Provider store={store}>
             <QueryClientProvider client={queryClient}>
               <PersistGate loading={<LoadingScreen />} persistor={persistor}>
-                <LanguageProvider>
-                  <MainApp />
-                  <StatusBar style="auto" />
-                </LanguageProvider>
+                <ThemeProvider>
+                  <LanguageProvider>
+                    <MainApp />
+                    <StatusBar style="auto" />
+                  </LanguageProvider>
+                </ThemeProvider>
               </PersistGate>
             </QueryClientProvider>
           </Provider>

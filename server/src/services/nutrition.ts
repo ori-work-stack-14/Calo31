@@ -57,12 +57,14 @@ export class NutritionService {
     console.log("🚀 Starting meal analysis for user:", user_id);
     console.log("🔑 OpenAI API Key available:", !!process.env.OPENAI_API_KEY);
     console.log("💬 Update text provided:", !!data.updateText);
+    console.log("🥗 Edited ingredients provided:", data.editedIngredients?.length || 0);
 
     // Attempt real AI analysis first, fallback only on failure
     const analysis = await OpenAIService.analyzeMealImage(
       cleanBase64,
       language,
-      data.updateText
+      data.updateText,
+      data.editedIngredients
     );
 
     console.log("✅ Analysis completed successfully");
@@ -79,115 +81,56 @@ export class NutritionService {
       data: { ai_requests_count: user.ai_requests_count + 1 },
     });
 
-    const items = (analysis.ingredients || []).map((ingredient, index) => ({
+    // Enhanced ingredient mapping with better error handling
+    const items = (analysis.ingredients || []).map((ingredient, index) => {
+      // Handle both string and object ingredients
+      const ingredientData = typeof ingredient === "string" 
+        ? { name: ingredient, calories: 0, protein: 0, carbs: 0, fat: 0 }
+        : ingredient;
+
+      return {
       id: index,
-      name:
-        typeof ingredient === "string"
-          ? ingredient
-          : ingredient.name || `Item ${index + 1}`,
-      calories:
-        typeof ingredient === "string"
-          ? "0"
-          : (ingredient.calories || 0).toString(),
-      protein:
-        typeof ingredient === "string"
-          ? "0"
-          : (ingredient.protein_g || ingredient.protein || 0).toString(),
-      protein_g:
-        typeof ingredient === "string"
-          ? 0
-          : Number(ingredient.protein_g || ingredient.protein || 0),
-      carbs:
-        typeof ingredient === "string"
-          ? "0"
-          : (ingredient.carbs_g || ingredient.carbs || 0).toString(),
-      carbs_g:
-        typeof ingredient === "string"
-          ? 0
-          : Number(ingredient.carbs_g || ingredient.carbs || 0),
-      fat:
-        typeof ingredient === "string"
-          ? "0"
-          : (ingredient.fats_g || ingredient.fat || 0).toString(),
-      fats_g:
-        typeof ingredient === "string"
-          ? 0
-          : Number(ingredient.fats_g || ingredient.fat || 0),
-      fiber:
-        typeof ingredient === "string" ? 0 : Number(ingredient.fiber_g ?? 0),
-      fiber_g:
-        typeof ingredient === "string" ? 0 : Number(ingredient.fiber_g ?? 0),
-      sugar:
-        typeof ingredient === "string" ? 0 : Number(ingredient.sugar_g ?? 0),
-      sugar_g:
-        typeof ingredient === "string" ? 0 : Number(ingredient.sugar_g ?? 0),
-      sodium_mg:
-        typeof ingredient === "string" ? 0 : Number(ingredient.sodium_mg ?? 0),
-      cholesterol_mg:
-        typeof ingredient === "string"
-          ? 0
-          : Number(ingredient.cholesterol_mg ?? 0),
+      name: ingredientData.name || `Item ${index + 1}`,
+      calories: (ingredientData.calories || 0).toString(),
+      protein: (ingredientData.protein_g || ingredientData.protein || 0).toString(),
+      protein_g: Number(ingredientData.protein_g || ingredientData.protein || 0),
+      carbs: (ingredientData.carbs_g || ingredientData.carbs || 0).toString(),
+      carbs_g: Number(ingredientData.carbs_g || ingredientData.carbs || 0),
+      fat: (ingredientData.fats_g || ingredientData.fat || 0).toString(),
+      fats_g: Number(ingredientData.fats_g || ingredientData.fat || 0),
+      fiber: Number(ingredientData.fiber_g ?? 0),
+      fiber_g: Number(ingredientData.fiber_g ?? 0),
+      sugar: Number(ingredientData.sugar_g ?? 0),
+      sugar_g: Number(ingredientData.sugar_g ?? 0),
+      sodium_mg: Number(ingredientData.sodium_mg ?? 0),
+      cholesterol_mg: Number(ingredientData.cholesterol_mg ?? 0),
 
       // Detailed fats
-      saturated_fats_g:
-        typeof ingredient === "string"
-          ? 0
-          : Number(ingredient.saturated_fats_g ?? 0),
-      polyunsaturated_fats_g:
-        typeof ingredient === "string"
-          ? 0
-          : Number(ingredient.polyunsaturated_fats_g ?? 0),
-      monounsaturated_fats_g:
-        typeof ingredient === "string"
-          ? 0
-          : Number(ingredient.monounsaturated_fats_g ?? 0),
-      omega_3_g:
-        typeof ingredient === "string" ? 0 : Number(ingredient.omega_3_g ?? 0),
-      omega_6_g:
-        typeof ingredient === "string" ? 0 : Number(ingredient.omega_6_g ?? 0),
+      saturated_fats_g: Number(ingredientData.saturated_fats_g ?? 0),
+      polyunsaturated_fats_g: Number(ingredientData.polyunsaturated_fats_g ?? 0),
+      monounsaturated_fats_g: Number(ingredientData.monounsaturated_fats_g ?? 0),
+      omega_3_g: Number(ingredientData.omega_3_g ?? 0),
+      omega_6_g: Number(ingredientData.omega_6_g ?? 0),
 
       // Detailed fiber
-      soluble_fiber_g:
-        typeof ingredient === "string"
-          ? 0
-          : Number(ingredient.soluble_fiber_g ?? 0),
-      insoluble_fiber_g:
-        typeof ingredient === "string"
-          ? 0
-          : Number(ingredient.insoluble_fiber_g ?? 0),
+      soluble_fiber_g: Number(ingredientData.soluble_fiber_g ?? 0),
+      insoluble_fiber_g: Number(ingredientData.insoluble_fiber_g ?? 0),
 
       // Additional nutrients
-      alcohol_g:
-        typeof ingredient === "string" ? 0 : Number(ingredient.alcohol_g ?? 0),
-      caffeine_mg:
-        typeof ingredient === "string"
-          ? 0
-          : Number(ingredient.caffeine_mg ?? 0),
-      serving_size_g:
-        typeof ingredient === "string"
-          ? 0
-          : Number(ingredient.serving_size_g ?? 0),
+      alcohol_g: Number(ingredientData.alcohol_g ?? 0),
+      caffeine_mg: Number(ingredientData.caffeine_mg ?? 0),
+      serving_size_g: Number(ingredientData.serving_size_g ?? 0),
 
       // Analysis data
-      glycemic_index:
-        typeof ingredient === "string"
-          ? null
-          : ingredient.glycemic_index ?? null,
-      insulin_index:
-        typeof ingredient === "string"
-          ? null
-          : ingredient.insulin_index ?? null,
+      glycemic_index: ingredientData.glycemic_index ?? null,
+      insulin_index: ingredientData.insulin_index ?? null,
 
       // JSON fields
-      vitamins_json:
-        typeof ingredient === "string" ? {} : ingredient.vitamins_json ?? {},
-      micronutrients_json:
-        typeof ingredient === "string"
-          ? {}
-          : ingredient.micronutrients_json ?? {},
-      allergens_json:
-        typeof ingredient === "string" ? {} : ingredient.allergens_json ?? {},
-    }));
+      vitamins_json: ingredientData.vitamins_json ?? {},
+      micronutrients_json: ingredientData.micronutrients_json ?? {},
+      allergens_json: ingredientData.allergens_json ?? {},
+      };
+    });
 
     const mappedMeal = mapMealDataToPrismaFields(
       analysis,

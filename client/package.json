@@ -36,6 +36,7 @@
     "expo-image-picker": "~14.7.1",
     "expo-linear-gradient": "^14.1.5",
     "expo-linking": "~7.1.5",
+    "expo-notifications": "~0.30.1",
     "expo-router": "~5.1.1",
     "expo-secure-store": "~14.2.3",
     "expo-splash-screen": "~0.30.9",
